@@ -1,0 +1,37 @@
+[package]
+name = "avr-rs-test"
+version = "0.1.0"
+authors = ["eugene.kokaiko@gmail.com <eugene.kokaiko@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "avr-rs-test"
+test = false
+bench = false
+
+[dependencies]
+panic-halt = "1.0.0"
+ufmt = "0.2.0"
+nb = "1.1.0"
+embedded-hal = "1.0"
+heapless = "0.9.1"
+oorandom = "11.1.5"
+
+[dependencies.arduino-hal]
+git = "https://github.com/rahix/avr-hal"
+rev = "5ccdd12d724d5b65273eb33a27cb55ab2ddcc865"
+features = ["arduino-mega2560"]
+
+# Configure the build for minimal size - AVRs have very little program memory
+[profile.dev]
+panic = "abort"
+lto = true
+opt-level = "s"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+debug = true
+lto = true
+opt-level = "s"

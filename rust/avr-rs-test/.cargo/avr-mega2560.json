@@ -1,0 +1,16 @@
+{
+  "arch": "avr",
+  "cpu": "atmega2560",
+  "llvm-target": "avr-unknown-unknown",
+  "target-endian": "little",
+  "target-pointer-width": "16",
+  "target-c-int-width": "16",
+  "os": "none",
+  "vendor": "unknown",
+  "linker-flavor": "gcc",
+  "disable-redzone": true,
+  "features": "+soft-float",
+  "panic-strategy": "abort",
+  "executables": true,
+  "max-atomic-width": 8
+}
