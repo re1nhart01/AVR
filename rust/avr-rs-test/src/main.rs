@@ -1,83 +1,134 @@
 #![no_std]
 #![no_main]
+#![feature(abi_avr_interrupt)]
+
 
 mod water_sensor;
 mod rgba_sensor;
 mod rc522;
+mod dht11;
+mod timer;
 
-use core::{cell::RefCell, pin};
+use core::{cell::{Cell, RefCell}, pin};
 
-use arduino_hal::{hal::{port::PB0, spi}, port::{Pin, mode::Output}, prelude::_embedded_hal_blocking_spi_Transfer};
+use arduino_hal::{Usart, adc::AdcOps, clock::MHz16, delay_ms, delay_us, hal::{Atmega, delay, port::{PB0, PE0, PE1}, spi}, pac::USART0, port::{Pin, mode::{Input, Output}}, prelude::_embedded_hal_blocking_spi_Transfer};
+use avr_device::interrupt::Mutex;
 use embedded_hal::spi::{Mode, Phase, Polarity};
-use embedded_hal::digital::OutputPin;
-use heapless::String;
 use panic_halt as _;
 
-use crate::rc522::Rc522;
 
-trait OrphanClone {
-    fn clone(&self) -> Self;
-}
+use crate::{dht11::DHT11, rc522::Rc522, timer::InterruptTimer};
+
+pub type SerialType = arduino_hal::Usart<
+    arduino_hal::pac::USART0,
+    Pin<arduino_hal::port::mode::Input, PE0>,
+    Pin<arduino_hal::port::mode::Output, PE1>
+>;
+
+static LOGGER: Mutex<RefCell<Option<SerialType>>> =
+    Mutex::new(RefCell::new(None));
 
 
-
-
-
-// #[arduino_hal::entry]
+#[arduino_hal::entry]
 fn main() -> ! {
-    let dp: arduino_hal::Peripherals = arduino_hal::Peripherals::take().unwrap();
-    let pins = arduino_hal::pins!(dp);
-    // let mut adc = arduino_hal::Adc::new(dp.ADC, Default::default());
+    let dp = arduino_hal::Peripherals::take().unwrap();
+
+    let timer0 = InterruptTimer::new();
+
+    timer0.init_timer0(&dp);
+
+    unsafe { avr_device::interrupt::enable() };
+
+    let mut pins = arduino_hal::pins!(dp);
+    
+    let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
+
+    // ufmt::uwriteln!(&mut serial, "{} {} {}", end - start, start, end).unwrap();
+
+    let dig_pin = pins.d52.into_pull_up_input().downgrade();
+
+    let mut dht11 = DHT11::new(dig_pin, &timer0);
+
+    // let start = dp.TC0.tcnt0.read().bits();
+    // let end = dp.TC0.tcnt0.read().bits();
+    // let ticks = end.wrapping_sub(start);
+
+    // let mut adc = arduino_hal::adc::Adc::new(dp.ADC, Default::default());
+
     // let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
-    // let mut red = pins.d40.into_output();
-    // let mut green = pins.d46.into_output();
-    // let mut blue = pins.d52.into_output();
+    // let sound_dig = pins.a0.into_analog_input(&mut adc);    
 
 
-
-    // let mut led = pins.d13.into_output();
-    // let analog_pin1 = &pins.a0.into_analog_input(&mut adc);
-    // let analog_pin2 = &pins.a1.into_analog_input(&mut adc);
-    // let analog_pin3 = &pins.a2.into_analog_input(&mut adc);
-
-    // let analog_pin = &pins.a4.into_analog_input(&mut adc);
 
     loop {
-        // led.toggle();
-        // arduino_hal::delay_ms(300);
-        
-        // // let noise1 = adc.read_blocking(analog_pin1);
-        // // let noise2 = adc.read_blocking(analog_pin2);
-        // // let noise3 = adc.read_blocking(analog_pin3);
+       if dht11.init(|data| {
+            ufmt::uwriteln!(&mut serial, "{}", data).unwrap();
+       }).is_ok() {
+        match dht11.read_bits(|data, b| {
+            ufmt::uwriteln!(&mut serial, "{} {}", data, b).unwrap();
+       }) {
+            Ok((h1,h2,t1,t2,chk)) => {
+                ufmt::uwriteln!(
+                    &mut serial,
+                    "H={}.% T={}.C chk={}", 
+                    h1, t1, chk
+                ).unwrap();
+            }
+            Err(_) => {
+                ufmt::uwriteln!(&mut serial, "ERR").unwrap();
+            }
+        }
+    } else {
+        ufmt::uwriteln!(&mut serial, "INIT FAIL").unwrap();
+    }
 
-        // let data = adc.read_blocking(analog_pin);
+    delay_ms(1500); // <- DHT11 не можна читати швидше ніж 1 раз/сек
 
 
 
-        // let bit0 = (noise1 & 1) as u8;
-        // let bit1 = (noise2 & 1) as u8;
-        // let bit2 = (noise3 & 1) as u8;
+        // arduino_hal::delay_ms(500);
 
-        // let mut rng = Rand32::new(unsafe {
-        //     core::ptr::read_volatile(0x46 as *const u8) as u64
-        // });
-        // let bit0 = (rng.rand_u32() & 1) as u8;
-        // let bit1 = (rng.rand_u32() & 1) as u8;
-        // let bit2 = (rng.rand_u32() & 1) as u8;
+        // let mut vec: heapless::Vec<u16, 100> = heapless::Vec::new();
 
-        // ufmt::uwriteln!(&mut serial, "{} {} {}", data, data, data).unwrap();
+        // for i in 0..100 {
+        //     let reading= sound_dig.analog_read(&mut adc);
+        //     vec.push(reading).unwrap();
+        //     arduino_hal::delay_ms(5);
+        // }
 
+        // let res: u16 = vec.iter().sum();
 
-        // if bit0 == 1 { red.set_high(); } else { red.set_low(); }
-        // if bit1 == 1 { green.set_high(); } else { green.set_low(); }
-        // if bit2 == 1 { blue.set_high(); } else { blue.set_low(); }
+        // ufmt::uwriteln!(&mut serial, "{}", res  / 100).unwrap();
 
+        // if false {
+        //     ufmt::uwriteln!(&mut serial, "There is sound").unwrap();
+        // } else {
+        //     ufmt::uwriteln!(&mut serial, "There is no sound").unwrap();
+        // }
     }
 }
 
 
-#[arduino_hal::entry]
+fn led_button() {
+    let dp: arduino_hal::Peripherals = arduino_hal::Peripherals::take().unwrap();
+    let pins = arduino_hal::pins!(dp);
+    let mut led = pins.d13.into_output();
+
+    let button_pin = pins.d52.into_pull_up_input();
+  
+    loop {
+        let state = button_pin.is_high();
+        if state {
+            led.set_high();
+        } else {
+            led.set_low();
+        }
+    }
+}
+
+
+// #[arduino_hal::entry]
 fn spi_test() -> ! {
     let dp = arduino_hal::Peripherals::take().unwrap();
     let pins = arduino_hal::pins!(dp);

@@ -23,6 +23,10 @@ git = "https://github.com/rahix/avr-hal"
 rev = "5ccdd12d724d5b65273eb33a27cb55ab2ddcc865"
 features = ["arduino-mega2560"]
 
+[dependencies.avr-device]
+version = "0.7.0"
+features = ["atmega2560"]
+
 # Configure the build for minimal size - AVRs have very little program memory
 [profile.dev]
 panic = "abort"
